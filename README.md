@@ -1,0 +1,2 @@
+# SpiffyZones
+easy advanced tiling
