@@ -16,7 +16,7 @@ easy advanced tiling for your X-Desktop
  - tk
  - wmctrl
  - xorg-x11-utils
- - 
+
 # Usage
 
 ```
@@ -28,6 +28,7 @@ Options:
   -d, --daemon          Run as daemon (provides the core-functionality)
   -p, --profile PROFILE Run in or configure profile
 ```
+
 ## Quickstart
  - run `spiffyzones.php --config`
  - create and arange your zones
