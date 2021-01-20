@@ -36,3 +36,6 @@ Options:
  - hold **Shift** while starting the drag operation
  - drop the window in the zone, you wan
  - smile 😊
+ 
+# Thanks
+ - to Microsoft for the idea [FancyZones](https://docs.microsoft.com/en-us/windows/powertoys/fancyzones) 😉
