@@ -35,7 +35,7 @@ Options:
  - save the config via the button
  - run `spiffyzones.php --daemon`
  - hold **Shift** while starting the drag operation
- - drop the window in the zone, you wan
+ - drop the window in the zone, you want
  - smile 😊
  
 # Thanks
