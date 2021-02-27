@@ -5,13 +5,21 @@ namespace TUO\SpiffyZones;
 
 use Exception;
 use Generator;
-use stdClass;
-use Throwable;
 
 class XEventReader
 {
     protected $Process;
     protected array $Pipes = [];
+
+    public function getProcessIsActive() : bool
+    {
+        if (is_resource($this->Process)) {
+            $Status = proc_get_status($this->Process);
+            return ($Status !== false) && ($Status['running'] === true);
+        } else {
+            return false;
+        }
+    }
 
     public function __construct()
     {
@@ -31,14 +39,15 @@ class XEventReader
      */
     public function run() : Generator
     {
-        $ReadStreams = [$this->Pipes[1]];
-        $WriteStream = null;
-        $ExceptStreams = null;
-        $NumStreams = @stream_select($ReadStreams, $WriteStream, $ExceptStreams, 0, 100000);
-        $Eventstring = '';
+        if ($this->getProcessIsActive()) {
+            $ReadStreams = [$this->Pipes[1]];
+            $WriteStream = [];
+            $ExceptStreams = [];
+            $Eventstring = '';
+            
+            $NumStreams = @stream_select($ReadStreams, $WriteStream, $ExceptStreams, 0, 100000);
 
-        if (($NumStreams !== false) && ($NumStreams > 0)) {
-            do {
+            while ($this->getProcessIsActive() && ($NumStreams !== false) && ($NumStreams > 0)) {
                 $Line = fgets($this->Pipes[1]);
                 if ($Line !== PHP_EOL) {
                     $Line = preg_replace('/(\s)\s+/', '$1', rtrim($Line));
@@ -53,9 +62,18 @@ class XEventReader
                     }
                     $Eventstring = '';
                 }
-                $NumStreams = stream_select($ReadStreams, $WriteStream, $ExceptStreams, 0, 50000);
-            } while (($NumStreams !== false) && ($NumStreams > 0));
+                $NumStreams = @stream_select($ReadStreams, $WriteStream, $ExceptStreams, 0, 50000);
+            }
         }
+    }
+
+    public function close()
+    {
+        if ($this->getProcessIsActive()) {
+            fclose($this->Pipes[1]);
+            proc_terminate($this->Process);
+        }
+        $this->Process = null;
     }
 }
 
@@ -162,11 +180,11 @@ class TCLShell
     /** @var array<TKWindow> */
     protected array $Windows = [];
 
-    protected function getProcessIsActive() : bool
+    public function getProcessIsActive() : bool
     {
         if (is_resource($this->Process)) {
             $Info = proc_get_status($this->Process);
-            return $Info['running'];
+            return ($Info !== false) && ($Info['running'] === true);
         } else {
             return false;
         }
@@ -216,15 +234,13 @@ class TCLShell
     {
         if ($this->execute("puts [{$Command}]")) {
             $ReadStreams = [$this->Pipes[1]];
-            $WriteStream = null;
-            $ExceptStreams = null;
+            $WriteStream = [];
+            $ExceptStreams = [];
             $Result = '';
-            $NumStreams = stream_select($ReadStreams, $WriteStream, $ExceptStreams, null);
-            if (($NumStreams !== false) && ($NumStreams > 0)) {
-                do {
-                    $Result .= fgets($this->Pipes[1]);
-                    $NumStreams = stream_select($ReadStreams, $WriteStream, $ExceptStreams, 0, 50000);
-                } while (($NumStreams !== false) && ($NumStreams > 0));
+            $NumStreams = @stream_select($ReadStreams, $WriteStream, $ExceptStreams, null);
+            while ($this->getProcessIsActive() && ($NumStreams !== false) && ($NumStreams > 0)) {
+                $Result .= fgets($this->Pipes[1]);
+                $NumStreams = @stream_select($ReadStreams, $WriteStream, $ExceptStreams, 0, 50000);
             }
             return $Result;
         } else {
@@ -237,8 +253,8 @@ class TCLShell
     {
         if ($this->getProcessIsActive()) {
             $ReadStreams = [$this->Pipes[1]];
-            $WriteStream = null;
-            $ExceptStreams = null;
+            $WriteStream = [];
+            $ExceptStreams = [];
             $Result = '';
             $NumStreams = stream_select($ReadStreams, $WriteStream, $ExceptStreams, 100000);
             if (($NumStreams !== false) && ($NumStreams > 0)) {
@@ -266,10 +282,11 @@ class TCLShell
     public function close()
     {
         if ($this->getProcessIsActive()) {
-            $this->execute('exit');
-            proc_close($this->Process);
-            $this->Process = null;
+            fclose($this->Pipes[0]);
+            fclose($this->Pipes[1]);
+            proc_terminate($this->Process);
         }
+        $this->Process = null;
     }
 
     public function addWindow(TKWindow $Window) : TCLShell
@@ -794,6 +811,70 @@ class XWinInfo
     }
 }
 
+class XProp
+{
+
+    /**
+     * @param int $WindowID
+     * @return array<int>
+     */
+    public static function getExtents(int $WindowID) : array
+    {
+        exec("xprop -id {$WindowID} _GTK_FRAME_EXTENTS _NET_FRAME_EXTENTS", $Lines);
+        
+        $Result = [
+            'left' => 0,
+            'right' => 0,
+            'top' => 0,
+            'bottom' => 0
+        ];
+
+        $Matches = [];
+        foreach ($Lines as $Line) {
+            if ((preg_match('/^\w+\(CARDINAL\) = (\d+), (\d+), (\d+), (\d+)/', $Line, $Matches) === 1)) {
+                $Result['left'] += intval($Matches[1]);
+                $Result['right'] += intval($Matches[2]);
+                $Result['top'] += intval($Matches[3]);
+                $Result['bottom'] += intval($Matches[4]);
+            }
+        }
+
+        return $Result;
+    }
+}
+
+class XDoTool
+{
+
+    /**
+     * @param int $WindowID
+     * @return array<int>
+     */
+    public static function getMouseInfo() : array
+    {
+        exec('xdotool getmouselocation', $Lines);
+        
+        $Result = [
+            'x' => 0,
+            'y' => 0,
+            'screen' => 0,
+            'window' => 0
+        ];
+
+        $Matches = [];
+        foreach ($Lines as $Line) {
+            if ((preg_match('/^x:(-?\d+) y:(-?\d+) screen:(\d+) window:(\d+)$/', $Line, $Matches) === 1)) {
+                $Result['x'] += intval($Matches[1]);
+                $Result['y'] += intval($Matches[2]);
+                $Result['screen'] += intval($Matches[3]);
+                $Result['window'] += intval($Matches[4]);
+            }
+        }
+
+        return $Result;
+    }
+}
+
 class WMWindow
 {
     public int $ID;
@@ -867,7 +948,7 @@ class WMCtrl
         $ManagedWindows = self::getWindows();
         if (! array_key_exists($WindowID, $ManagedWindows)) {
             $Children = XWinInfo::getChildren($WindowID);
-            
+
             foreach ($Children as $ChildWindowID) {
                 if (array_key_exists($ChildWindowID, $ManagedWindows)) {
                     $WindowID = $ChildWindowID;
@@ -876,7 +957,18 @@ class WMCtrl
             }
         }
 
+        
+        /*$Extents = XProp::getExtents($WindowID);
+        echo "{$WindowID} {$NewGeometry->asWMCtrlMVArg()}" . PHP_EOL;
+        $Rect = new Rect(
+            $NewGeometry->X - $Extents['left'],
+            $NewGeometry->Y - $Extents['top'],
+            $NewGeometry->Width - $Extents['right'],
+            $NewGeometry->Height - $Extents['bottom']
+        );*/
+                
         exec("wmctrl -i -r {$WindowID} -e {$NewGeometry->asWMCtrlMVArg()}");
+        //exec("wmctrl -i -r {$WindowID} -e {$Rect->asWMCtrlMVArg()}");
     }
 
     /**
@@ -972,7 +1064,7 @@ class App
             "",
             "Options:",
             "  -h, --help" => "Show this help",
-            "  -c, --config" => "Configuration mode",
+            "  -c, --configure" => "Configuration mode",
             "  -d, --daemon" => "Run as daemon (provides the core-functionality)",
             "  -p, --profile PROFILE" => "Run in or configure profile",
             "\e" //Last line; wont be printed
@@ -1003,7 +1095,7 @@ class App
     {
         $MissingDeps = [];
 
-        $Commands = ['xev', 'wmctrl', 'xwininfo', 'wish'];
+        $Commands = ['xev', 'wmctrl', 'xwininfo', 'xprop', 'wish', 'xdotool'];
         foreach ($Commands as $Command) {
             if (! Shell::getCommandExists($Command)) {
                 $MissingDeps[] = "Command '{$Command}'";
@@ -1024,31 +1116,22 @@ class App
 
     protected static function parseArguments()
     {
-        global $argv;
-        
-        for ($idx = 1; $idx < count($argv); $idx++) {
-            switch (strtolower($argv[$idx])) {
-                case '-d':
-                case '--daemon':
-                    self::$AppMode = self::APPMODE_DAEMON;
-                    break;
-                case '-c':
-                case '--config':
-                    self::$AppMode = self::APPMODE_CONFIG;
-                    break;
-                case '-h':
-                case '--help':
-                    self::$AppMode = self::APPMODE_SHOW_HELP;
-                    break;
-                case '-p':
-                case '--profile':
-                    $idx++;
-                    if ($idx < count($argv)) {
-                        self::$ProfileName = $argv[$idx];
-                    } else {
-                        throw new Exception('No profile name specified after -p|--profile!');
-                    }
-                    break;
+        $arguments = getopt('cdhp:', ['configure', 'daemon', 'help', 'profile:']);
+
+        if (is_array($arguments)) {
+            if (array_key_exists('c', $arguments) || array_key_exists('cconfigure', $arguments)) {
+                self::$AppMode = self::APPMODE_CONFIG;
+            } elseif (array_key_exists('d', $arguments) || array_key_exists('daemon', $arguments)) {
+                self::$AppMode = self::APPMODE_DAEMON;
+            } elseif (array_key_exists('h', $arguments) || array_key_exists('help', $arguments)) {
+                self::$AppMode = self::APPMODE_SHOW_HELP;
+            }
+
+            if (array_key_exists('p', $arguments)) {
+                self::$ProfileName = $arguments['p'];
+            }
+            if (array_key_exists('profile', $arguments)) {
+                self::$ProfileName = $arguments['profile'];
             }
         }
     }
@@ -1181,7 +1264,7 @@ class AppDaemon extends App
         parent::__construct();
         $this->Reader = new XEventReader();
         $this->createZones();
-
+        
         pcntl_async_signals(true);
         pcntl_signal(SIGTERM, [$this, 'OnSignal']);
         pcntl_signal(SIGHUP, [$this, 'OnSignal']);
@@ -1291,7 +1374,8 @@ class AppDaemon extends App
             } elseif (($Event->window == $this->ChangingWindow) && ($Event->width == $this->ChangingWindowWidth) && ($Event->height == $this->ChangingWindowHeight)) {
                 $this->showZones();
                 $this->ChangingWindowIsMoving = true;
-                $this->MatchingZone = $this->getMatchingZone($Event->Param5['x'], $Event->Param5['y'], $Event->width, $Event->height);
+                $mouseInfo = XDoTool::getMouseInfo();
+                $this->MatchingZone = $this->getMatchingZone($mouseInfo['x'], $mouseInfo['y']);
                 $this->highlightZones();
             }
         }
@@ -1322,11 +1406,8 @@ class AppDaemon extends App
         }
     }
 
-    protected function getMatchingZone(int $X, int $Y, int $Width, int $Height)
+    protected function getMatchingZone(int $MouseX, int $MouseY)
     {
-        $MouseX = $X + intdiv($Width, 2);
-        $MouseY = $Y;
-        
         foreach ($this->Zones as $Zone) {
             if ($Zone->Config->Rect->containsPoint($MouseX, $MouseY)) {
                 return $Zone;
@@ -1343,7 +1424,8 @@ class AppDaemon extends App
                 $this->handleEvent($Event);
             }
         }
-
+        
+        $this->Reader->close();
         $this->Shell->close();
         $this->removePIDFile();
     }

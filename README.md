@@ -16,6 +16,7 @@ easy advanced tiling for your X-Desktop
  - tk
  - wmctrl
  - xorg-x11-utils
+ - xdotool
 
 # Usage
 
@@ -37,6 +38,10 @@ Options:
  - hold **Shift** while starting the drag operation
  - drop the window in the zone, you want
  - smile 😊
+
+ # Demo
+ ## Config
+![Demo1](https://github.com/TheUnknownOnes/SpiffyZones/raw/main/demo/SpiffiyZonesConfig1.gif)
  
 # Thanks
  - to Microsoft for the idea [FancyZones](https://docs.microsoft.com/en-us/windows/powertoys/fancyzones) 😉
