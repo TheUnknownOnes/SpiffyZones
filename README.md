@@ -41,7 +41,7 @@ Options:
 
  # Demo
  ## Config
-![Demo1](https://github.com/TheUnknownOnes/SpiffyZones/raw/main/demo/SpiffiyZonesConfig1.gif)
+![Demo1](https://github.com/TheUnknownOnes/SpiffyZones/raw/main/demo/SpiffyZonesConfig1.gif)
  
 # Thanks
  - to Microsoft for the idea [FancyZones](https://docs.microsoft.com/en-us/windows/powertoys/fancyzones) 😉
